@@ -10,39 +10,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: List repo files
+      - name: Unzip project
         run: |
-          echo "=== Repo root ==="
-          ls -la
-          echo "=== ZIP files ==="
-          find . -maxdepth 1 -name "*.zip" -type f
-
-      - name: Unzip
-        run: |
-          set -e
           ZIP=$(find . -maxdepth 1 -name "*.zip" -type f | head -1)
-          if [ -z "$ZIP" ]; then
-            echo "❌ No .zip found in repo root"
-            exit 1
-          fi
-          echo "Found zip: $ZIP"
+          if [ -z "$ZIP" ]; then echo "No zip"; exit 1; fi
           mkdir -p project
           unzip -o "$ZIP" -d project
-          echo "=== Extracted structure ==="
-          find project -maxdepth 3 -type f | head -50
+          echo "=== Files ==="
+          find project -maxdepth 3 -name "*.gradle" -o -name "*.xml" | head -20
 
-      - name: Find project
+      - name: Find project root
         id: find
         run: |
-          F=$(find project -name 'settings.gradle*' | head -1)
-          if [ -z "$F" ]; then
-            echo "❌ settings.gradle not found"
-            echo "Full tree:"
-            find project -type f | head -100
-            exit 1
-          fi
+          F=$(find project -name "settings.gradle" | head -1)
+          if [ -z "$F" ]; then echo "settings.gradle missing"; exit 1; fi
           DIR=$(dirname "$F")
-          echo "Project dir: $DIR"
+          echo "Project: $DIR"
           echo "dir=$DIR" >> $GITHUB_OUTPUT
 
       - uses: actions/setup-java@v4
@@ -54,16 +37,15 @@ jobs:
         with:
           gradle-version: 8.7
 
-      - name: Wrapper
+      - name: Build (only show errors)
         working-directory: ${{ steps.find.outputs.dir }}
-        run: gradle wrapper --gradle-version 8.7
+        run: |
+          gradle wrapper --gradle-version 8.7 --quiet
+          ./gradlew assembleDebug --no-daemon --console=plain 2>&1 | grep -E "error:|Error:|FAILED|Caused by|--> " | head -50 || true
 
-      - name: Build
-        working-directory: ${{ steps.find.outputs.dir }}
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: HSC-Result-APK
           path: project/**/build/outputs/apk/debug/*.apk
