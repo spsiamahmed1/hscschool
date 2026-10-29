@@ -1,0 +1,41 @@
+name: Build HSC Result APK
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '*.zip'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip
+        run: |
+          mkdir project
+          for z in *.zip; do unzip -o "$z" -d project; done
+      - name: Find project
+        id: find
+        run: |
+          F=$(find project -name 'settings.gradle*' | head -1)
+          if [ -z "$F" ]; then
+            echo "settings.gradle not found in zip"
+            exit 1
+          fi
+          echo "dir=$(dirname "$F")" >> $GITHUB_OUTPUT
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - name: Wrapper
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle wrapper --gradle-version 8.7
+      - name: Build
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HSC-Result-APK
+          path: project/**/build/outputs/apk/debug/*.apk
