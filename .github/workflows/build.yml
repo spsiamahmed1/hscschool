@@ -9,33 +9,61 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: List repo files
+        run: |
+          echo "=== Repo root ==="
+          ls -la
+          echo "=== ZIP files ==="
+          find . -maxdepth 1 -name "*.zip" -type f
+
       - name: Unzip
         run: |
-          mkdir project
-          for z in *.zip; do unzip -o "$z" -d project; done
+          set -e
+          ZIP=$(find . -maxdepth 1 -name "*.zip" -type f | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "❌ No .zip found in repo root"
+            exit 1
+          fi
+          echo "Found zip: $ZIP"
+          mkdir -p project
+          unzip -o "$ZIP" -d project
+          echo "=== Extracted structure ==="
+          find project -maxdepth 3 -type f | head -50
+
       - name: Find project
         id: find
         run: |
           F=$(find project -name 'settings.gradle*' | head -1)
           if [ -z "$F" ]; then
-            echo "settings.gradle not found in zip"
+            echo "❌ settings.gradle not found"
+            echo "Full tree:"
+            find project -type f | head -100
             exit 1
           fi
-          echo "dir=$(dirname "$F")" >> $GITHUB_OUTPUT
+          DIR=$(dirname "$F")
+          echo "Project dir: $DIR"
+          echo "dir=$DIR" >> $GITHUB_OUTPUT
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
+
       - name: Wrapper
         working-directory: ${{ steps.find.outputs.dir }}
         run: gradle wrapper --gradle-version 8.7
+
       - name: Build
         working-directory: ${{ steps.find.outputs.dir }}
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: HSC-Result-APK
           path: project/**/build/outputs/apk/debug/*.apk
