@@ -1,4 +1,4 @@
-name: Build HSC Result APK
+name: Build APK from ZIP
 on:
   workflow_dispatch:
   push:
@@ -9,43 +9,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Unzip project
+      - name: Unzip
         run: |
-          ZIP=$(find . -maxdepth 1 -name "*.zip" -type f | head -1)
-          if [ -z "$ZIP" ]; then echo "No zip"; exit 1; fi
-          mkdir -p project
-          unzip -o "$ZIP" -d project
-          echo "=== Files ==="
-          find project -maxdepth 3 -name "*.gradle" -o -name "*.xml" | head -20
-
-      - name: Find project root
+          mkdir project
+          for z in *.zip; do unzip -o "$z" -d project; done
+      - name: Find project
         id: find
         run: |
-          F=$(find project -name "settings.gradle" | head -1)
-          if [ -z "$F" ]; then echo "settings.gradle missing"; exit 1; fi
-          DIR=$(dirname "$F")
-          echo "Project: $DIR"
-          echo "dir=$DIR" >> $GITHUB_OUTPUT
-
+          F=$(find project -name 'settings.gradle*' | head -1)
+          echo "dir=$(dirname "$F")" >> $GITHUB_OUTPUT
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
-
-      - name: Build (only show errors)
+      - run: gradle assembleDebug
         working-directory: ${{ steps.find.outputs.dir }}
-        run: |
-          gradle wrapper --gradle-version 8.7 --quiet
-          ./gradlew assembleDebug --no-daemon --console=plain 2>&1 | grep -E "error:|Error:|FAILED|Caused by|--> " | head -50 || true
-
-      - name: Upload APK
-        if: always()
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: HSC-Result-APK
+          name: app-apk
           path: project/**/build/outputs/apk/debug/*.apk
